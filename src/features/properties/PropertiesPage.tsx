@@ -1,0 +1,31 @@
+import { useState } from 'react'
+import { useForm } from 'react-hook-form'
+import { z } from 'zod'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { Plus, Building2 } from 'lucide-react'
+import { useCreateUnit, usePhotoUrls, useSetStatus, useUnits } from './useUnits'
+import { Badge, Empty, PageHeader } from '../../components/ui'
+const schema = z.object({ name: z.string().min(1, 'Requerido'), building: z.string().optional().default(''), type: z.string(), bedrooms: z.coerce.number().min(0), bathrooms: z.coerce.number().min(0), rent: z.coerce.number().min(0) })
+const tone: any = { disponible: 'blue', alquilada: 'green', reservada: 'amber', mantenimiento: 'red', vendida: 'slate' }
+export default function PropertiesPage() {
+  const { data = [], isLoading, error } = useUnits(); const create = useCreateUnit(); const setSt = useSetStatus(); const [open, setOpen] = useState(false); const [q, setQ] = useState(''); const [st, setS] = useState(''); const [bld, setBld] = useState(''); const [photo, setPhoto] = useState<File | null>(null)
+  const photos = usePhotoUrls(data.map(u => u.photo_path ?? '')); const { register, handleSubmit, reset, formState: { errors } } = useForm({ resolver: zodResolver(schema), defaultValues: { type: 'Apartamento', bedrooms: 1, bathrooms: 1, rent: 0, name: '', building: '' } })
+  const groups: Record<string, { t: number; r: number }> = {}; data.forEach(u => { const n = u.buildings?.name ?? 'Independientes'; groups[n] ??= { t: 0, r: 0 }; groups[n].t++; if (u.status === 'alquilada') groups[n].r++ })
+  const list = data.filter(u => (!st || u.status === st) && (!bld || (u.buildings?.name ?? 'Independientes') === bld) && `${u.name} ${u.buildings?.name ?? ''} ${u.tenants?.full_name ?? ''}`.toLowerCase().includes(q.toLowerCase()))
+  return (<div><PageHeader title="Propiedades" sub={`${Object.keys(groups).length} complejos · ${data.length} unidades`} action={<button className="btn flex items-center gap-1" onClick={() => setOpen(!open)}><Plus size={18} />Nueva</button>} />
+    {open && <form className="card mb-4 grid gap-3 sm:grid-cols-2" onSubmit={handleSubmit(async v => { await create.mutateAsync({ ...(v as any), photo }); reset(); setPhoto(null); setOpen(false) })}>
+      <div><input className="inp" placeholder="Nombre / número (ej. 4B)" {...register('name')} />{errors.name && <p className="text-sm text-red-600">{errors.name.message}</p>}</div><input className="inp" placeholder="Edificio o proyecto" {...register('building')} />
+      <select className="inp" {...register('type')}>{['Apartamento', 'Casa', 'Local comercial', 'Oficina', 'Solar'].map(t => <option key={t}>{t}</option>)}</select><input className="inp" type="number" placeholder="Renta mensual" {...register('rent')} />
+      <input className="inp" type="number" placeholder="Habitaciones" {...register('bedrooms')} /><input className="inp" type="number" placeholder="Baños" {...register('bathrooms')} />
+      <label className="text-sm text-slate-500 sm:col-span-2">Foto (opcional)<input className="mt-1 block w-full text-sm" type="file" accept="image/*" onChange={e => setPhoto(e.target.files?.[0] ?? null)} /></label>
+      {create.error && <p className="text-sm text-red-600 sm:col-span-2">{(create.error as Error).message}</p>}<button className="btn sm:col-span-2" disabled={create.isPending}>{create.isPending ? 'Guardando…' : 'Guardar propiedad'}</button></form>}
+    <div className="mb-4 flex gap-3 overflow-x-auto pb-1">{Object.entries(groups).map(([n, v]) => <button key={n} onClick={() => setBld(bld === n ? '' : n)} className={`card min-w-[170px] text-left ${bld === n ? 'ring-2 ring-brand' : ''}`}><Building2 size={18} className="text-brand" /><b className="mt-1 block truncate">{n}</b><p className="text-xs text-slate-500">{v.r}/{v.t} ocupadas</p><div className="mt-2 h-1.5 rounded bg-brand-soft"><div className="h-1.5 rounded bg-brand" style={{ width: Math.round(100 * v.r / v.t) + '%' }} /></div></button>)}</div>
+    <div className="mb-4 flex gap-2"><input className="inp" placeholder="Buscar edificio, unidad o inquilino…" value={q} onChange={e => setQ(e.target.value)} /><select className="inp max-w-[140px]" value={st} onChange={e => setS(e.target.value)} aria-label="Estado"><option value="">Todos</option>{Object.keys(tone).map(s => <option key={s}>{s}</option>)}</select></div>
+    {isLoading && <p className="text-slate-500">Cargando…</p>}{error && <p className="text-red-600">{(error as Error).message}</p>}
+    {!isLoading && !list.length && <Empty text="Aún no hay propiedades. Crea la primera con “Nueva”." />}
+    <div className="grid gap-4 sm:grid-cols-2">{list.map(u => <div key={u.id} className="card lift overflow-hidden p-0 sm:p-0"><div className="relative h-44 bg-gradient-to-br from-ink via-azul to-brand">{u.photo_path && photos.data?.[u.photo_path] && <img src={photos.data[u.photo_path]} alt={`Unidad ${u.name}`} className="absolute inset-0 h-full w-full object-cover transition duration-500 hover:scale-105" loading="lazy" onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />}<div className="absolute inset-0 bg-gradient-to-t from-ink/70 via-transparent to-transparent" /><div className="absolute left-3 top-3"><Badge tone={tone[u.status]}>{u.status}</Badge></div><p className="absolute bottom-2 left-3 font-display text-xl font-extrabold text-white">${Number(u.rent).toLocaleString()}<span className="text-xs font-medium opacity-80">/mes</span></p></div>
+      <div className="p-4"><div className="flex items-start justify-between gap-2"><div><b>{u.type} {u.name}</b><p className="text-sm text-slate-500">{u.buildings?.name ?? 'Independiente'}</p></div></div>
+        <p className="mt-1 text-sm text-slate-500">{u.bedrooms} hab · {u.bathrooms} baños{u.tenants ? ' · ' + u.tenants.full_name : ''}</p>
+        <div className="mt-3 flex items-center justify-between"><b className="text-lg">${Number(u.rent).toLocaleString()}<span className="text-xs font-normal text-slate-500">/mes</span></b>
+          <select className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm" aria-label="Cambiar estado" value={u.status} onChange={e => setSt.mutate({ id: u.id, status: e.target.value })}>{Object.keys(tone).map(s => <option key={s}>{s}</option>)}</select></div></div></div>)}</div></div>)
+}
